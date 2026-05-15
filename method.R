@@ -88,9 +88,9 @@ temporary_membership_from_cpm <- function(communities, n_nodes) {
       # unique community membership
       temp_mem[v] <- node_to_comms[[v]][1]
     } else {
-      # overlap node
-      temp_mem[v] <- next_label
-      next_label <- next_label + 1
+      # overlap node: assign temporarily to its first CPM community
+      # for modularity scoring only
+      temp_mem[v] <- node_to_comms[[v]][1]
     }
   }
   
@@ -228,3 +228,4 @@ run_signed_spinglass <- function(W_mat, seed = 42) {
     objective = modularity(res)
   )
 }
+

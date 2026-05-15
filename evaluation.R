@@ -1,6 +1,81 @@
 library(dplyr)
 
 # ----------------------------------------
+# Adjusted Rand Index
+# Implemented directly to avoid an additional package dependency
+# ----------------------------------------
+compute_ari <- function(pred, truth) {
+  if (length(pred) != length(truth)) {
+    stop("pred and truth must have the same length.")
+  }
+  
+  tab <- table(pred, truth)
+  n <- sum(tab)
+  
+  if (n <= 1) return(NA_real_)
+  
+  choose2 <- function(x) x * (x - 1) / 2
+  
+  sum_comb_c <- sum(choose2(tab))
+  sum_comb_rows <- sum(choose2(rowSums(tab)))
+  sum_comb_cols <- sum(choose2(colSums(tab)))
+  total_comb <- choose2(n)
+  
+  expected_index <- sum_comb_rows * sum_comb_cols / total_comb
+  max_index <- 0.5 * (sum_comb_rows + sum_comb_cols)
+  
+  denom <- max_index - expected_index
+  
+  if (denom == 0) {
+    return(NA_real_)
+  }
+  
+  (sum_comb_c - expected_index) / denom
+}
+
+# ----------------------------------------
+# Ground-truth labels for non-overlapping scenarios
+# Bowtie is excluded from ARI because the true structure is overlapping
+# ----------------------------------------
+get_truth_labels <- function(scenario) {
+  switch(
+    scenario,
+    "triangle" = c(1, 1, 1, 2, 2, 2, 2, 2, 2, 2),
+    "ld_trap" = c(1, 1, 1, 2, 2, 2, 3, 3, 3, 3),
+    "local_bridge_trap" = c(1, 1, 1, 1, 2, 2, 2, 2, 3, 3),
+    "bowtie" = NULL,
+    stop(sprintf("Unknown scenario for truth labels: %s", scenario))
+  )
+}
+
+# ----------------------------------------
+# Safe extraction helper for evaluation outputs
+# ----------------------------------------
+get_metric <- function(x, name, default = NA) {
+  if (!is.null(x[[name]])) x[[name]] else default
+}
+
+# ----------------------------------------
+# Generic core-cluster success check
+# Used for triangle-like single-core scenarios
+# ----------------------------------------
+check_core_cluster_success <- function(mem, core = c(1, 2, 3)) {
+  core_same <- length(unique(mem[core])) == 1
+  
+  list(
+    success = core_same,
+    false_merge = FALSE,
+    over_split = !core_same,
+    noise_merge = NA,
+    forced_assignment = FALSE,
+    left_recovered = NA,
+    right_recovered = NA,
+    core_separated = NA,
+    core_recovered = core_same
+  )
+}
+
+# ----------------------------------------
 # Generic success criterion for hard-clustering methods
 # Applicable to Louvain and Spinglass under two-cluster scenarios
 # ----------------------------------------
@@ -16,19 +91,25 @@ check_two_cluster_success <- function(mem, group1 = c(1, 2, 3), group2 = c(4, 5,
   g2_has_noise <- sum(mem == g2_cluster_id) > length(group2)
   noise_merge <- g1_has_noise || g2_has_noise
   
-  strict_success <- g1_same && g2_same && separate && !noise_merge
+  core_recovered <- g1_same && g2_same && separate
+  strict_success <- core_recovered && !noise_merge
   
   list(
     success = strict_success,
     false_merge = length(unique(mem[c(group1, group2)])) == 1,
     over_split = !(g1_same && g2_same),
-    noise_merge = noise_merge,           # Indicates whether background/noise nodes have been absorbed into either target cluster
-    forced_assignment = FALSE            # Included for completeness; set to FALSE outside the bowtie scenario
+    noise_merge = noise_merge,
+    forced_assignment = FALSE,
+    left_recovered = g1_same,
+    right_recovered = g2_same,
+    core_separated = separate,
+    core_recovered = core_recovered
   )
 }
 
 # ----------------------------------------
 # Hard-clustering reference criterion for the bowtie scenario
+# Hard-clustering methods cannot explicitly represent overlapping membership
 # ----------------------------------------
 check_hard_bowtie <- function(mem, left = c(1, 2, 3), right = c(3, 4, 5), hub = 3) {
   left_same <- length(unique(mem[left])) == 1
@@ -39,11 +120,15 @@ check_hard_bowtie <- function(mem, left = c(1, 2, 3), right = c(3, 4, 5), hub = 
   forced_assignment <- (left_same || right_same) && !false_merge
   
   list(
-    success = FALSE, 
+    success = FALSE,
     false_merge = false_merge,
     over_split = over_split,
-    noise_merge = NA,                    # A clean definition of noise merge is not straightforward in the bowtie setting; recorded as NA
-    forced_assignment = forced_assignment # Indicates whether the hub structure has been reduced to a single hard assignment
+    noise_merge = NA,
+    forced_assignment = forced_assignment,
+    left_recovered = left_same,
+    right_recovered = right_same,
+    core_separated = !false_merge,
+    core_recovered = forced_assignment
   )
 }
 
@@ -54,9 +139,14 @@ check_cpm_triangle <- function(comms, core = c(1, 2, 3)) {
   # For a 3-node core, recovery of at least 2 nodes within a CPM community
   # is treated as successful localisation of the core signal
   has_core <- any(sapply(comms, function(x) sum(x %in% core) >= 2))
+  
   list(
     success = has_core,
-    false_merge = FALSE
+    false_merge = FALSE,
+    left_recovered = NA,
+    right_recovered = NA,
+    core_separated = NA,
+    core_recovered = has_core
   )
 }
 
@@ -70,7 +160,11 @@ check_cpm_bowtie <- function(comms, left = c(1, 2, 3), right = c(3, 4, 5), hub =
       false_merge = FALSE,
       hub_overlap = FALSE,
       recovered_left = 0,
-      recovered_right = 0
+      recovered_right = 0,
+      left_recovered = FALSE,
+      right_recovered = FALSE,
+      core_separated = FALSE,
+      core_recovered = FALSE
     ))
   }
   
@@ -82,15 +176,24 @@ check_cpm_bowtie <- function(comms, left = c(1, 2, 3), right = c(3, 4, 5), hub =
   non_hub_right <- setdiff(right, hub)
   
   false_merge <- any(sapply(comms, function(x) {
-    sum(non_hub_left %in% x) >= 2 && sum(non_hub_right %in% x) >= 2
+    any(non_hub_left %in% x) && any(non_hub_right %in% x)
   }))
   
+  left_recovered <- max_left >= 2
+  right_recovered <- max_right >= 2
+  core_separated <- !false_merge
+  core_recovered <- left_recovered && right_recovered && core_separated
+  
   list(
-    success = (max_left >= 2) && (max_right >= 2) && hub_overlap && !false_merge,
+    success = core_recovered && hub_overlap,
     false_merge = false_merge,
     hub_overlap = hub_overlap,
     recovered_left = max_left,
-    recovered_right = max_right
+    recovered_right = max_right,
+    left_recovered = left_recovered,
+    right_recovered = right_recovered,
+    core_separated = core_separated,
+    core_recovered = core_recovered
   )
 }
 
@@ -107,9 +210,16 @@ check_cpm_ldtrap <- function(comms, group1 = c(1, 2, 3), group2 = c(4, 5, 6)) {
     any(group1 %in% x) && any(group2 %in% x)
   }))
   
+  core_separated <- !false_merge
+  core_recovered <- has_g1 && has_g2 && core_separated
+  
   list(
-    success = has_g1 && has_g2 && !false_merge,
-    false_merge = false_merge
+    success = core_recovered,
+    false_merge = false_merge,
+    left_recovered = has_g1,
+    right_recovered = has_g2,
+    core_separated = core_separated,
+    core_recovered = core_recovered
   )
 }
 
@@ -126,9 +236,16 @@ check_cpm_local_bridge_trap <- function(comms, group1 = c(1, 2, 3, 4), group2 = 
     any(group1 %in% x) && any(group2 %in% x)
   }))
   
+  core_separated <- !false_merge
+  core_recovered <- has_g1 && has_g2 && core_separated
+  
   list(
-    success = has_g1 && has_g2 && !false_merge,
-    false_merge = false_merge
+    success = core_recovered,
+    false_merge = false_merge,
+    left_recovered = has_g1,
+    right_recovered = has_g2,
+    core_separated = core_separated,
+    core_recovered = core_recovered
   )
 }
 
@@ -141,23 +258,37 @@ summarise_results <- function(res) {
     group_by(scenario) %>%
     summarise(
       louvain_success_rate = mean(louvain_success, na.rm = TRUE),
+      louvain_core_recovered_rate = mean(louvain_core_recovered, na.rm = TRUE),
+      louvain_left_recovered_rate = mean(louvain_left_recovered, na.rm = TRUE),
+      louvain_right_recovered_rate = mean(louvain_right_recovered, na.rm = TRUE),
+      louvain_core_separated_rate = mean(louvain_core_separated, na.rm = TRUE),
       louvain_false_merge_rate = mean(louvain_false_merge, na.rm = TRUE),
       louvain_over_split_rate = mean(louvain_over_split, na.rm = TRUE),
       louvain_noise_merge_rate = mean(louvain_noise_merge, na.rm = TRUE),
       louvain_forced_assignment_rate = mean(louvain_forced_assignment, na.rm = TRUE),
+      louvain_mean_ari = mean(louvain_ari, na.rm = TRUE),
       
       cpm_success_rate = mean(cpm_success, na.rm = TRUE),
+      cpm_core_recovered_rate = mean(cpm_core_recovered, na.rm = TRUE),
+      cpm_left_recovered_rate = mean(cpm_left_recovered, na.rm = TRUE),
+      cpm_right_recovered_rate = mean(cpm_right_recovered, na.rm = TRUE),
+      cpm_core_separated_rate = mean(cpm_core_separated, na.rm = TRUE),
       cpm_false_merge_rate = mean(cpm_false_merge, na.rm = TRUE),
       cpm_mean_tau = mean(cpm_tau, na.rm = TRUE),
+      cpm_mean_ari = mean(cpm_ari, na.rm = TRUE),
       
       spinglass_success_rate = mean(spinglass_success, na.rm = TRUE),
+      spinglass_core_recovered_rate = mean(spinglass_core_recovered, na.rm = TRUE),
+      spinglass_left_recovered_rate = mean(spinglass_left_recovered, na.rm = TRUE),
+      spinglass_right_recovered_rate = mean(spinglass_right_recovered, na.rm = TRUE),
+      spinglass_core_separated_rate = mean(spinglass_core_separated, na.rm = TRUE),
       spinglass_false_merge_rate = mean(spinglass_false_merge, na.rm = TRUE),
       spinglass_over_split_rate = mean(spinglass_over_split, na.rm = TRUE),
-      
-      # Corrected: these fields now refer to the Spinglass outputs,
-      # rather than incorrectly reusing the Louvain variables
       spinglass_noise_merge_rate = mean(spinglass_noise_merge, na.rm = TRUE),
       spinglass_forced_assignment_rate = mean(spinglass_forced_assignment, na.rm = TRUE),
+      spinglass_mean_ari = mean(spinglass_ari, na.rm = TRUE),
+      
       .groups = "drop"
     )
 }
+
