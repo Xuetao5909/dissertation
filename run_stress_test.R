@@ -47,17 +47,23 @@ run_stress_test <- function(
       )
       
       # -------------------------
-      # Run methods
+      # Run methods and record runtime
       # -------------------------
-      lou <- run_louvain(net$H4)
+      lou_time <- system.time({
+        lou <- run_louvain(net$H4)
+      })
       
-      cpm <- run_cpm_dynamic(
-        H4_mat = net$H4,
-        tau_grid = cpm_tau_grid,
-        overlap_required = 2
-      )
+      cpm_time <- system.time({
+        cpm <- run_cpm_dynamic(
+          H4_mat = net$H4,
+          tau_grid = cpm_tau_grid,
+          overlap_required = 2
+        )
+      })
       
-      spg <- run_signed_spinglass(net$W)
+      spg_time <- system.time({
+        spg <- run_signed_spinglass(net$W)
+      })
       
       # -------------------------
       # ARI labels
@@ -167,6 +173,7 @@ run_stress_test <- function(
         louvain_forced_assignment = get_metric(eval_lou, "forced_assignment"),
         louvain_objective = lou$objective,
         louvain_ari = louvain_ari,
+        louvain_time_sec = as.numeric(lou_time["elapsed"]),
         
         cpm_success = eval_cpm$success,
         cpm_core_recovered = get_metric(eval_cpm, "core_recovered"),
@@ -180,6 +187,7 @@ run_stress_test <- function(
         cpm_n_communities = cpm$n_communities,
         cpm_hub_overlap = ifelse(is.null(eval_cpm$hub_overlap), NA, eval_cpm$hub_overlap),
         cpm_ari = cpm_ari,
+        cpm_time_sec = as.numeric(cpm_time["elapsed"]),
         
         spinglass_success = eval_spg$success,
         spinglass_core_recovered = get_metric(eval_spg, "core_recovered"),
@@ -191,7 +199,8 @@ run_stress_test <- function(
         spinglass_noise_merge = get_metric(eval_spg, "noise_merge"),
         spinglass_forced_assignment = get_metric(eval_spg, "forced_assignment"),
         spinglass_objective = spg$objective,
-        spinglass_ari = spinglass_ari
+        spinglass_ari = spinglass_ari,
+        spinglass_time_sec = as.numeric(spg_time["elapsed"])
       )
       
       counter <- counter + 1
@@ -200,4 +209,3 @@ run_stress_test <- function(
   
   dplyr::bind_rows(results)
 }
-
