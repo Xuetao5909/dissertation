@@ -7,7 +7,7 @@ source("run_stress_test.R")
 res_obj <- load_reservoirs("coloc-simulation-results.csv.gz")
 
 res <- run_stress_test(
-  n_reps = 20,
+  n_reps = 100,
   scenarios = c("triangle", "bowtie", "ld_trap", "local_bridge_trap"),
   reservoir_shared = res_obj$reservoir_shared,
   reservoir_shared_weak = res_obj$reservoir_shared_weak,
@@ -22,11 +22,25 @@ res <- run_stress_test(
 summary_tab <- summarise_results(res)
 
 print(summary_tab)
+# Runtime summary table
+
+# -------------------------
+runtime_total_by_scenario <- res %>%
+  group_by(scenario) %>%
+  summarise(
+    louvain_total_time_sec = sum(louvain_time_sec, na.rm = TRUE),
+    cpm_total_time_sec = sum(cpm_time_sec, na.rm = TRUE),
+    spinglass_total_time_sec = sum(spinglass_time_sec, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+print(runtime_total_by_scenario)
 
 if (!dir.exists("output")) dir.create("output", recursive = TRUE)
 
 readr::write_csv(res, "output/stress_test_results.csv")
 readr::write_csv(summary_tab, "output/stress_test_summary.csv")
+readr::write_csv(runtime_tab, "output/runtime_total_by_scenario.csv")
 names(res)
 library(dplyr)
 library(tidyr)
@@ -76,3 +90,33 @@ p_ari_box <- ggplot(ari_long, aes(x = method, y = ARI)) +
   )
 
 print(p_ari_box)
+runtime_total_long <- res %>%
+  group_by(scenario) %>%
+  summarise(
+    Louvain = sum(louvain_time_sec, na.rm = TRUE),
+    CPM = sum(cpm_time_sec, na.rm = TRUE),
+    `Signed Spinglass` = sum(spinglass_time_sec, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  tidyr::pivot_longer(
+    cols = c(Louvain, CPM, `Signed Spinglass`),
+    names_to = "method",
+    values_to = "total_time_sec"
+  )
+
+print(runtime_total_long)
+p_runtime_total <- ggplot(runtime_total_long, aes(x = method, y = total_time_sec)) +
+  geom_col(width = 0.65) +
+  facet_wrap(~ scenario) +
+  labs(
+    title = "Total runtime by method and scenario",
+    x = "Method",
+    y = "Total runtime seconds"
+  ) +
+  theme_bw(base_size = 12) +
+  theme(
+    axis.text.x = element_text(angle = 25, hjust = 1),
+    plot.title = element_text(face = "bold")
+  )
+
+print(p_runtime_total)
