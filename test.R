@@ -3,6 +3,7 @@ source("network_generators.R")
 source("method.R")
 source("evaluation.R")
 source("run_stress_test.R")
+source("run_scaling_test.R")
 
 res_obj <- load_reservoirs("coloc-simulation-results.csv.gz")
 
@@ -120,3 +121,117 @@ p_runtime_total <- ggplot(runtime_total_long, aes(x = method, y = total_time_sec
   )
 
 print(p_runtime_total)
+
+
+
+
+
+scaling_res <- run_scaling_test(
+  n_reps = 5,
+  node_sizes = c(10, 20, 30, 50, 100),
+  reservoir_shared_strong = res_obj$reservoir_shared_strong,
+  reservoir_shared_moderate = res_obj$reservoir_shared_moderate,
+  reservoir_distinct_bg = res_obj$reservoir_distinct_bg,
+  reservoir_distinct_trap = res_obj$reservoir_distinct_trap,
+  cpm_tau_grid = seq(0.1, 0.7, by = 0.1)
+)
+scaling_summary <- summarise_scaling_runtime(scaling_res)
+
+print(scaling_summary)
+library(tidyr)
+library(ggplot2)
+
+scaling_long <- scaling_summary %>%
+  select(
+    scaling_type,
+    scenario,
+    n_nodes,
+    true_cluster_size,
+    louvain_mean_time_sec,
+    cpm_mean_time_sec,
+    spinglass_mean_time_sec
+  ) %>%
+  pivot_longer(
+    cols = c(louvain_mean_time_sec, cpm_mean_time_sec, spinglass_mean_time_sec),
+    names_to = "method",
+    values_to = "mean_time_sec"
+  ) %>%
+  mutate(
+    method = recode(
+      method,
+      louvain_mean_time_sec = "Louvain",
+      cpm_mean_time_sec = "CPM",
+      spinglass_mean_time_sec = "Signed Spinglass"
+    ),
+    scaling_type = recode(
+      scaling_type,
+      background_expansion = "Background-node expansion",
+      expanded_ldtrap = "Expanded LD-trap"
+    ),
+    scenario = recode(
+      scenario,
+      triangle = "Triangle",
+      ld_trap = "LD trap",
+      local_bridge_trap = "Local bridge trap"
+    )
+  )
+
+p_scaling_runtime <- ggplot(
+  scaling_long,
+  aes(x = n_nodes, y = mean_time_sec, group = method, colour = method)
+) +
+  geom_line(aes(linetype = method), linewidth = 0.9) +
+  geom_point(size = 2.4) +
+  facet_grid(scaling_type ~ scenario, scales = "free_y") +
+  scale_colour_manual(
+    values = c(
+      "Louvain" = "#4E79A7",
+      "CPM" = "#F28E2B",
+      "Signed Spinglass" = "#59A14F"
+    )
+  ) +
+  labs(
+    title = "Runtime scaling with number of nodes",
+    x = "Number of nodes",
+    y = "Mean runtime per replicate (seconds)",
+    colour = "Method",
+    linetype = "Method"
+  ) +
+  theme_bw(base_size = 12) +
+  theme(
+    plot.title = element_text(face = "bold"),
+    axis.text.x = element_text(angle = 25, hjust = 1),
+    legend.position = "right"
+  )
+
+print(p_scaling_runtime)
+p_scaling_runtime_log <- ggplot(
+  scaling_long,
+  aes(x = n_nodes, y = mean_time_sec, group = method, colour = method)
+) +
+  geom_line(aes(linetype = method), linewidth = 0.9) +
+  geom_point(size = 2.4) +
+  scale_y_log10() +
+  facet_grid(scaling_type ~ scenario, scales = "free_y") +
+  scale_colour_manual(
+    values = c(
+      "Louvain" = "#4E79A7",
+      "CPM" = "#F28E2B",
+      "Signed Spinglass" = "#59A14F"
+    )
+  ) +
+  labs(
+    title = "Runtime scaling with number of nodes, log scale",
+    x = "Number of nodes",
+    y = "Mean runtime per replicate (seconds, log scale)",
+    colour = "Method",
+    linetype = "Method"
+  ) +
+  theme_bw(base_size = 12) +
+  theme(
+    plot.title = element_text(face = "bold"),
+    axis.text.x = element_text(angle = 25, hjust = 1),
+    legend.position = "right"
+  )
+
+print(p_scaling_runtime_log)
