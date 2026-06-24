@@ -53,6 +53,10 @@ run_stress_test <- function(
         lou <- run_louvain(net$H4)
       })
       
+      inf_time <- system.time({
+        inf <- run_infomap(net$H4)
+      })
+      
       cpm_time <- system.time({
         cpm <- run_cpm_dynamic(
           H4_mat = net$H4,
@@ -73,6 +77,12 @@ run_stress_test <- function(
       
       louvain_ari <- if (!is.null(truth)) {
         compute_ari(lou$membership, truth)
+      } else {
+        NA_real_
+      }
+      
+      infomap_ari <- if (!is.null(truth)) {
+        compute_ari(inf$membership, truth)
       } else {
         NA_real_
       }
@@ -98,6 +108,11 @@ run_stress_test <- function(
           core = c(1, 2, 3)
         )
         
+        eval_inf <- check_core_cluster_success(
+          mem = inf$membership,
+          core = c(1, 2, 3)
+        )
+        
         eval_spg <- check_core_cluster_success(
           mem = spg$membership,
           core = c(1, 2, 3)
@@ -111,6 +126,7 @@ run_stress_test <- function(
       
       if (sc == "bowtie") {
         eval_lou <- check_hard_bowtie(lou$membership)
+        eval_inf <- check_hard_bowtie(inf$membership)
         eval_spg <- check_hard_bowtie(spg$membership)
         eval_cpm <- check_cpm_bowtie(cpm$communities)
       }
@@ -118,6 +134,12 @@ run_stress_test <- function(
       if (sc == "ld_trap") {
         eval_lou <- check_two_cluster_success(
           mem = lou$membership,
+          group1 = c(1, 2, 3),
+          group2 = c(4, 5, 6)
+        )
+        
+        eval_inf <- check_two_cluster_success(
+          mem = inf$membership,
           group1 = c(1, 2, 3),
           group2 = c(4, 5, 6)
         )
@@ -138,6 +160,12 @@ run_stress_test <- function(
       if (sc == "local_bridge_trap") {
         eval_lou <- check_two_cluster_success(
           mem = lou$membership,
+          group1 = c(1, 2, 3, 4),
+          group2 = c(5, 6, 7, 8)
+        )
+        
+        eval_inf <- check_two_cluster_success(
+          mem = inf$membership,
           group1 = c(1, 2, 3, 4),
           group2 = c(5, 6, 7, 8)
         )
@@ -175,6 +203,19 @@ run_stress_test <- function(
         louvain_ari = louvain_ari,
         louvain_time_sec = as.numeric(lou_time["elapsed"]),
         
+        infomap_success = eval_inf$success,
+        infomap_core_recovered = get_metric(eval_inf, "core_recovered"),
+        infomap_left_recovered = get_metric(eval_inf, "left_recovered"),
+        infomap_right_recovered = get_metric(eval_inf, "right_recovered"),
+        infomap_core_separated = get_metric(eval_inf, "core_separated"),
+        infomap_false_merge = eval_inf$false_merge,
+        infomap_over_split = get_metric(eval_inf, "over_split"),
+        infomap_noise_merge = get_metric(eval_inf, "noise_merge"),
+        infomap_forced_assignment = get_metric(eval_inf, "forced_assignment"),
+        infomap_objective = inf$modularity,
+        infomap_ari = infomap_ari,
+        infomap_time_sec = as.numeric(inf_time["elapsed"]),
+        
         cpm_success = eval_cpm$success,
         cpm_core_recovered = get_metric(eval_cpm, "core_recovered"),
         cpm_left_recovered = get_metric(eval_cpm, "left_recovered"),
@@ -209,3 +250,4 @@ run_stress_test <- function(
   
   dplyr::bind_rows(results)
 }
+

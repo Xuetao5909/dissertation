@@ -19,6 +19,58 @@ run_louvain <- function(H4_mat) {
   )
 }
 
+# ============================================================
+# Infomap community detection
+# H4-only hard-clustering baseline
+# ============================================================
+
+run_infomap <- function(H4_mat) {
+  
+  # Convert H4 matrix to undirected weighted graph
+  g <- igraph::graph_from_adjacency_matrix(
+    H4_mat,
+    mode = "undirected",
+    weighted = TRUE,
+    diag = FALSE
+  )
+  
+  # Remove zero-weight edges if present
+  if (igraph::ecount(g) > 0) {
+    g <- igraph::delete_edges(g, igraph::E(g)[weight <= 0])
+  }
+  
+  # If graph has no edges, return each node as its own community
+  if (igraph::ecount(g) == 0) {
+    mem <- seq_len(igraph::vcount(g))
+    return(list(
+      membership = mem,
+      modularity = NA_real_,
+      n_communities = length(unique(mem))
+    ))
+  }
+  
+  # Run Infomap using edge weights
+  cl <- igraph::cluster_infomap(
+    g,
+    e.weights = igraph::E(g)$weight
+  )
+  
+  mem <- igraph::membership(cl)
+  
+  # Modularity is recorded for comparability with Louvain/CPM,
+  # although Infomap itself does not optimise modularity.
+  mod <- tryCatch(
+    igraph::modularity(g, mem, weights = igraph::E(g)$weight),
+    error = function(e) NA_real_
+  )
+  
+  return(list(
+    membership = as.integer(mem),
+    modularity = mod,
+    n_communities = length(unique(mem))
+  ))
+}
+
 # ----------------------------------------
 # Build CPM communities from clique list
 # overlap_required = 2 corresponds to strict CPM for k=3

@@ -251,12 +251,15 @@ check_cpm_local_bridge_trap <- function(comms, group1 = c(1, 2, 3, 4), group2 = 
 
 # ----------------------------------------
 # Summary table
-# The third method is Spinglass rather than SBM
+# Four methods: Louvain, Infomap, CPM, and Signed Spinglass
 # ----------------------------------------
 summarise_results <- function(res) {
   res %>%
     group_by(scenario) %>%
     summarise(
+      # -------------------------
+      # Louvain
+      # -------------------------
       louvain_success_rate = mean(louvain_success, na.rm = TRUE),
       louvain_core_recovered_rate = mean(louvain_core_recovered, na.rm = TRUE),
       louvain_left_recovered_rate = mean(louvain_left_recovered, na.rm = TRUE),
@@ -267,7 +270,26 @@ summarise_results <- function(res) {
       louvain_noise_merge_rate = mean(louvain_noise_merge, na.rm = TRUE),
       louvain_forced_assignment_rate = mean(louvain_forced_assignment, na.rm = TRUE),
       louvain_mean_ari = mean(louvain_ari, na.rm = TRUE),
+      louvain_mean_time_sec = mean(louvain_time_sec, na.rm = TRUE),
       
+      # -------------------------
+      # Infomap
+      # -------------------------
+      infomap_success_rate = mean(infomap_success, na.rm = TRUE),
+      infomap_core_recovered_rate = mean(infomap_core_recovered, na.rm = TRUE),
+      infomap_left_recovered_rate = mean(infomap_left_recovered, na.rm = TRUE),
+      infomap_right_recovered_rate = mean(infomap_right_recovered, na.rm = TRUE),
+      infomap_core_separated_rate = mean(infomap_core_separated, na.rm = TRUE),
+      infomap_false_merge_rate = mean(infomap_false_merge, na.rm = TRUE),
+      infomap_over_split_rate = mean(infomap_over_split, na.rm = TRUE),
+      infomap_noise_merge_rate = mean(infomap_noise_merge, na.rm = TRUE),
+      infomap_forced_assignment_rate = mean(infomap_forced_assignment, na.rm = TRUE),
+      infomap_mean_ari = mean(infomap_ari, na.rm = TRUE),
+      infomap_mean_time_sec = mean(infomap_time_sec, na.rm = TRUE),
+      
+      # -------------------------
+      # CPM
+      # -------------------------
       cpm_success_rate = mean(cpm_success, na.rm = TRUE),
       cpm_core_recovered_rate = mean(cpm_core_recovered, na.rm = TRUE),
       cpm_left_recovered_rate = mean(cpm_left_recovered, na.rm = TRUE),
@@ -276,7 +298,11 @@ summarise_results <- function(res) {
       cpm_false_merge_rate = mean(cpm_false_merge, na.rm = TRUE),
       cpm_mean_tau = mean(cpm_tau, na.rm = TRUE),
       cpm_mean_ari = mean(cpm_ari, na.rm = TRUE),
+      cpm_mean_time_sec = mean(cpm_time_sec, na.rm = TRUE),
       
+      # -------------------------
+      # Signed Spinglass
+      # -------------------------
       spinglass_success_rate = mean(spinglass_success, na.rm = TRUE),
       spinglass_core_recovered_rate = mean(spinglass_core_recovered, na.rm = TRUE),
       spinglass_left_recovered_rate = mean(spinglass_left_recovered, na.rm = TRUE),
@@ -287,8 +313,8 @@ summarise_results <- function(res) {
       spinglass_noise_merge_rate = mean(spinglass_noise_merge, na.rm = TRUE),
       spinglass_forced_assignment_rate = mean(spinglass_forced_assignment, na.rm = TRUE),
       spinglass_mean_ari = mean(spinglass_ari, na.rm = TRUE),
+      spinglass_mean_time_sec = mean(spinglass_time_sec, na.rm = TRUE),
       
       .groups = "drop"
     )
 }
-

@@ -50,9 +50,19 @@ generate_scaled_ldtrap_network <- function(
 # ----------------------------------------
 # Run three methods and record runtime only
 # ----------------------------------------
+# ----------------------------------------
+# Run three methods and record runtime only
+# ----------------------------------------
+# ----------------------------------------
+# Run four methods and record runtime only
+# ----------------------------------------
 run_methods_with_runtime <- function(net, cpm_tau_grid = seq(0.1, 0.7, by = 0.05)) {
   lou_time <- system.time({
     lou <- run_louvain(net$H4)
+  })
+  
+  inf_time <- system.time({
+    inf <- run_infomap(net$H4)
   })
   
   cpm_time <- system.time({
@@ -69,6 +79,7 @@ run_methods_with_runtime <- function(net, cpm_tau_grid = seq(0.1, 0.7, by = 0.05
   
   tibble(
     louvain_time_sec = as.numeric(lou_time["elapsed"]),
+    infomap_time_sec = as.numeric(inf_time["elapsed"]),
     cpm_time_sec = as.numeric(cpm_time["elapsed"]),
     spinglass_time_sec = as.numeric(spg_time["elapsed"]),
     cpm_tau = cpm$tau,
@@ -231,6 +242,10 @@ summarise_scaling_runtime <- function(scaling_res) {
       louvain_mean_time_sec = mean(louvain_time_sec, na.rm = TRUE),
       louvain_median_time_sec = median(louvain_time_sec, na.rm = TRUE),
       louvain_total_time_sec = sum(louvain_time_sec, na.rm = TRUE),
+      
+      infomap_mean_time_sec = mean(infomap_time_sec, na.rm = TRUE),
+      infomap_median_time_sec = median(infomap_time_sec, na.rm = TRUE),
+      infomap_total_time_sec = sum(infomap_time_sec, na.rm = TRUE),
       
       cpm_mean_time_sec = mean(cpm_time_sec, na.rm = TRUE),
       cpm_median_time_sec = median(cpm_time_sec, na.rm = TRUE),
