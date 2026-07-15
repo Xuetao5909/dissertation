@@ -23,6 +23,81 @@ res <- run_stress_test(
 summary_tab <- summarise_results(res)
 
 print(summary_tab)
+
+library(readr)
+
+
+write_csv(summary_tab, "simulation_summary_results.csv")
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+
+success_long <- summary_tab %>%
+  select(
+    scenario,
+    louvain_success_rate,
+    infomap_success_rate,
+    cpm_success_rate,
+    spinglass_success_rate
+  ) %>%
+  pivot_longer(
+    cols = -scenario,
+    names_to = "method",
+    values_to = "success_rate"
+  ) %>%
+  mutate(
+    method = recode(
+      method,
+      louvain_success_rate = "Louvain",
+      infomap_success_rate = "Infomap",
+      cpm_success_rate = "CPM",
+      spinglass_success_rate = "Signed Spinglass"
+    ),
+    method = factor(
+      method,
+      levels = c("Louvain", "Infomap", "CPM", "Signed Spinglass")
+    ),
+    scenario = recode(
+      scenario,
+      triangle = "Triangle",
+      bowtie = "Bowtie overlap",
+      ld_trap = "LD trap",
+      local_bridge_trap = "Local bridge trap"
+    ),
+    scenario = factor(
+      scenario,
+      levels = c("Triangle", "Bowtie overlap", "LD trap", "Local bridge trap")
+    )
+  )
+
+p_success <- ggplot(
+  success_long,
+  aes(x = scenario, y = success_rate * 100, fill = method)
+) +
+  geom_col(position = position_dodge(width = 0.8), width = 0.7) +
+  scale_y_continuous(limits = c(0, 100)) +
+  labs(
+    title = "Figure 3.1. Success rate across stress-test scenarios",
+    x = "Scenario",
+    y = "Success rate (%)",
+    fill = "Method"
+  ) +
+  theme_bw(base_size = 12) +
+  theme(
+    axis.text.x = element_text(angle = 25, hjust = 1),
+    plot.title = element_text(face = "bold"),
+    legend.position = "bottom"
+  )
+
+print(p_success)
+
+ggsave(
+  "output/Figure_3_1_success_rate.png",
+  p_success,
+  width = 10,
+  height = 5.5,
+  dpi = 300
+)
 # Runtime summary table
 
 # -------------------------
@@ -84,18 +159,30 @@ ari_long <- res %>%
 
 p_ari_box <- ggplot(ari_long, aes(x = method, y = ARI)) +
   geom_boxplot(outlier.shape = NA, width = 0.6) +
-  geom_jitter(width = 0.12, alpha = 0.6, size = 1.8) +
-  facet_wrap(~ scenario) +
+  geom_jitter(width = 0.12, height = 0, alpha = 0.6, size = 1.8) +
+  facet_wrap(~ scenario, nrow = 1) +
+  coord_cartesian(ylim = c(0, 1)) +
   labs(
-    title = "Adjusted Rand Index across stress-test replicates",
+    title = "Figure 3.3. Adjusted Rand Index across stress-test replicates",
     x = "Method",
     y = "Adjusted Rand Index"
   ) +
   theme_bw(base_size = 12) +
   theme(
     axis.text.x = element_text(angle = 25, hjust = 1),
-    plot.title = element_text(face = "bold")
+    plot.title = element_text(face = "bold"),
+    strip.text = element_text(face = "bold")
   )
+
+print(p_ari_box)
+
+ggsave(
+  filename = "output/Figure_3_2_ARI_boxplot.png",
+  plot = p_ari_box,
+  width = 9,
+  height = 5,
+  dpi = 300
+)
 
 print(p_ari_box)
 runtime_total_long <- res %>%
@@ -180,21 +267,26 @@ scaling_long <- scaling_summary %>%
     method = recode(
       method,
       louvain_mean_time_sec = "Louvain",
-      
+      infomap_mean_time_sec = "Infomap",
       cpm_mean_time_sec = "CPM",
       spinglass_mean_time_sec = "Signed Spinglass"
     ),
-    scaling_type = recode(
+    method = factor(
+      method,
+      levels = c("Louvain", "Infomap", "CPM", "Signed Spinglass")
+    ),
+    scaling_type_label = recode(
       scaling_type,
       background_expansion = "Background-node expansion",
       expanded_ldtrap = "Expanded LD-trap"
     ),
-    scenario = recode(
+    scenario_label = recode(
       scenario,
       triangle = "Triangle",
       ld_trap = "LD trap",
       local_bridge_trap = "Local bridge trap"
-    )
+    ),
+    panel_label = paste0(scaling_type_label, "\n", scenario_label)
   )
 
 p_scaling_runtime <- ggplot(
@@ -227,6 +319,56 @@ p_scaling_runtime <- ggplot(
   )
 
 print(p_scaling_runtime)
+scaling_plot_data <- scaling_long %>%
+  filter(
+    scaling_type == "expanded_ldtrap",
+    scenario == "ld_trap"
+  )
+
+method_cols <- c(
+  "Louvain" = "#4E79A7",
+  "Infomap" = "#B07AA1",
+  "CPM" = "#F28E2B",
+  "Signed Spinglass" = "#59A14F"
+)
+
+p_scaling_runtime_log <- ggplot(
+  scaling_plot_data,
+  aes(
+    x = n_nodes,
+    y = mean_time_sec,
+    group = method,
+    colour = method,
+    linetype = method
+  )
+) +
+  geom_line(linewidth = 1.1) +
+  geom_point(size = 3) +
+  scale_y_log10() +
+  scale_colour_manual(values = method_cols, drop = FALSE) +
+  labs(
+    title = "Figure 3.4. Runtime scaling in the expanded LD-trap scenario",
+    x = "Number of nodes",
+    y = "Mean runtime per replicate (seconds, log scale)",
+    colour = "Method",
+    linetype = "Method"
+  ) +
+  theme_bw(base_size = 13) +
+  theme(
+    plot.title = element_text(face = "bold"),
+    axis.text.x = element_text(angle = 25, hjust = 1),
+    legend.position = "bottom"
+  )
+
+print(p_scaling_runtime_log)
+
+ggsave(
+  filename = "output/Figure_3_3_runtime_scaling_expanded_ldtrap_log.png",
+  plot = p_scaling_runtime_log,
+  width = 8.5,
+  height = 5,
+  dpi = 300
+)
 p_scaling_runtime_log <- ggplot(
   scaling_long,
   aes(x = n_nodes, y = mean_time_sec, group = method, colour = method)
@@ -239,6 +381,7 @@ p_scaling_runtime_log <- ggplot(
     values = c(
       "Louvain" = "#4E79A7",
       "CPM" = "#F28E2B",
+      "Infomap" = "#B07AA1",
       "Signed Spinglass" = "#59A14F"
     )
   ) +
@@ -409,3 +552,132 @@ scaling_summary_test <- summarise_scaling_runtime(scaling_res_test)
 
 print(scaling_summary_test)
 names(scaling_summary_test)
+unique(scaling_long$method)
+names(scaling_summary)
+library(ggplot2)
+library(dplyr)
+library(tibble)
+library(patchwork)
+
+# Fixed bowtie node layout: two triangles share node 3
+nodes <- tibble(
+  node = c("1", "2", "3", "4", "5"),
+  x = c(-1.2, -1.2, 0, 1.2, 1.2),
+  y = c(0.8, -0.8, 0, 0.8, -0.8)
+)
+
+edges <- tibble(
+  from = c("1", "1", "2", "3", "3", "4"),
+  to   = c("2", "3", "3", "4", "5", "5")
+)
+
+make_edges <- function(edges, nodes) {
+  edges %>%
+    left_join(nodes %>% rename(from = node, x_from = x, y_from = y), by = "from") %>%
+    left_join(nodes %>% rename(to = node, x_to = x, y_to = y), by = "to")
+}
+
+edges_plot <- make_edges(edges, nodes)
+
+# Method-specific representative solutions
+solution_nodes <- bind_rows(
+  nodes %>%
+    mutate(
+      method = "Louvain",
+      community = case_when(
+        node %in% c("1", "2", "3") ~ "Community 1",
+        node %in% c("4", "5") ~ "Community 2"
+      )
+    ),
+  nodes %>%
+    mutate(
+      method = "Infomap",
+      community = "Merged community"
+    ),
+  nodes %>%
+    mutate(
+      method = "CPM",
+      community = case_when(
+        node %in% c("1", "2") ~ "Community 1",
+        node == "3" ~ "Overlap hub",
+        node %in% c("4", "5") ~ "Community 2"
+      )
+    ),
+  nodes %>%
+    mutate(
+      method = "Signed Spinglass",
+      community = case_when(
+        node %in% c("1", "2", "3") ~ "Community 1",
+        node %in% c("4", "5") ~ "Community 2"
+      )
+    )
+)
+
+solution_edges <- bind_rows(
+  edges_plot %>% mutate(method = "Louvain"),
+  edges_plot %>% mutate(method = "Infomap"),
+  edges_plot %>% mutate(method = "CPM"),
+  edges_plot %>% mutate(method = "Signed Spinglass")
+)
+
+solution_nodes$method <- factor(
+  solution_nodes$method,
+  levels = c("Louvain", "Infomap", "CPM", "Signed Spinglass")
+)
+
+solution_edges$method <- factor(
+  solution_edges$method,
+  levels = c("Louvain", "Infomap", "CPM", "Signed Spinglass")
+)
+
+community_cols <- c(
+  "Community 1" = "#4E79A7",
+  "Community 2" = "#F28E2B",
+  "Overlap hub" = "#EAC54F",
+  "Merged community" = "#59A14F"
+)
+
+p_bowtie_solutions <- ggplot() +
+  geom_segment(
+    data = solution_edges,
+    aes(x = x_from, y = y_from, xend = x_to, yend = y_to),
+    linewidth = 0.8,
+    colour = "grey35"
+  ) +
+  geom_point(
+    data = solution_nodes,
+    aes(x = x, y = y, fill = community),
+    shape = 21,
+    size = 10,
+    colour = "grey25",
+    stroke = 0.8
+  ) +
+  geom_text(
+    data = solution_nodes,
+    aes(x = x, y = y, label = node),
+    size = 4.5,
+    fontface = "bold"
+  ) +
+  facet_wrap(~ method, nrow = 1) +
+  scale_fill_manual(values = community_cols) +
+  coord_equal(xlim = c(-1.8, 1.8), ylim = c(-1.2, 1.2), clip = "off") +
+  labs(
+    title = "Figure 3.2. Representative clustering outputs for one bowtie example",
+    fill = "Detected community"
+  ) +
+  theme_void(base_size = 12) +
+  theme(
+    plot.title = element_text(face = "bold", hjust = 0.5),
+    strip.text = element_text(face = "bold", size = 11),
+    legend.position = "bottom"
+  )
+
+print(p_bowtie_solutions)
+
+ggsave(
+  filename = "output/Figure_3_2_bowtie_example_solutions.png",
+  plot = p_bowtie_solutions,
+  width = 11,
+  height = 4.5,
+  dpi = 300
+)
